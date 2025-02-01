@@ -88,20 +88,39 @@ class OnlineDPOTrainerWithSamples(OnlineDPOTrainer):
                 completions = [template.render(messages=completion) for completion in completions]
 
             # TODO: make sure that this makes pairs for each of the nxn completions
+            completions_to_compare = []
+            left_indices = []
+            right_indices = []
+
+            for i in range(self.num_samples):
+                for j in range(self.num_samples):
+                    completions_to_compare.extend(zip(
+                        completions[i * batch_size: (i + 1) * batch_size],
+                        completions[j * batch_size: (j + 1) * batch_size]
+                    ))
+                    left_indices.extend([i] * batch_size)
+                    right_indices.extend([j] * batch_size)
+
+            left_indices = torch.Tensor(left_indices)
+            right_indices = torch.Tensor(right_indices)
+
             ranks_of_first_completion = self.judge.judge(
-                prompts, list(zip(completions[:batch_size], completions[batch_size:]))
+                prompts, completions_to_compare
             )
 
             # convert ranks to a True/False mask:
             # when rank == 0, it means the first completion is the best
             # when rank == 1, it means the second completion is the best
-            mask = torch.tensor([rank == 0 for rank in ranks_of_first_completion], device=device)
+            chosen_indices = left_indices.gather(
+                torch.tensor([response_idx for response_idx, rank in enumerate(ranks_of_first_completion) if rank == 1], device=device)
+            )
+            rejected_indices = right_indices.gather(
+                torch.tensor([response_idx for response_idx, rank in enumerate(ranks_of_first_completion) if rank == -1], device=device)
+            )
+        
+            assert chosen_indices.shape == rejected_indices.shape
         else:
             raise NotImplementedError("Reward model not implemented")
-
-        batch_range = torch.arange(batch_size, device=device)
-        chosen_indices = batch_range + (~mask * batch_size)
-        rejected_indices = batch_range + (mask * batch_size)
 
         # Build tensor so that the first half is the chosen examples and the second half the rejected examples
         cr_indices = torch.cat((chosen_indices, rejected_indices), dim=0)  # cr = chosen and rejected
@@ -116,8 +135,10 @@ class OnlineDPOTrainerWithSamples(OnlineDPOTrainer):
         cr_ref_logprobs_sum = (cr_ref_logprobs * ~cr_padding_mask).sum(1)
 
         # Split the chosen and rejected examples
-        chosen_logprobs_sum, rejected_logprobs_sum = torch.split(cr_logprobs_sum, batch_size)
-        chosen_ref_logprobs_sum, rejected_ref_logprobs_sum = torch.split(cr_ref_logprobs_sum, batch_size)
+        adj_batch_size = chosen_indices.shape[-1]
+
+        chosen_logprobs_sum, rejected_logprobs_sum = torch.split(cr_logprobs_sum, adj_batch_size)
+        chosen_ref_logprobs_sum, rejected_ref_logprobs_sum = torch.split(cr_ref_logprobs_sum, adj_batch_size)
         pi_logratios = chosen_logprobs_sum - rejected_logprobs_sum
         ref_logratios = chosen_ref_logprobs_sum - rejected_ref_logprobs_sum
 
