@@ -9,16 +9,16 @@ class MathJudge(BaseRankJudge):
         self.questions = list(qa_dict.keys())
 
     def judge(self, prompts, completions):
-        results = [0]
+        results = []
         for (prompt, (ans_a, ans_b)) in zip(prompts, completions):
             ground_truth = parse(self.qa_dict[extractOne(prompt, self.questions)[0]])
             ans_a_correct = verify(ground_truth, parse(ans_a))
             ans_b_correct = verify(ground_truth, parse(ans_b))
             
-            if ans_a_correct and not ans_b_correct:
-                results.append(1)
-            elif ans_a_correct and ans_b_correct:
+            if ans_a_correct == ans_b_correct:
+                results.append(-1)
+            elif ans_a_correct and not ans_b_correct:
                 results.append(0)
             else:
-                results.append(-1)
+                results.append(1)
         return results        

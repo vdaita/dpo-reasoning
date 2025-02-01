@@ -101,8 +101,8 @@ class OnlineDPOTrainerWithSamples(OnlineDPOTrainer):
                     left_indices.extend([i] * batch_size)
                     right_indices.extend([j] * batch_size)
 
-            left_indices = torch.Tensor(left_indices)
-            right_indices = torch.Tensor(right_indices)
+            left_indices = torch.Tensor(left_indices, device=device, dtype=torch.int32)
+            right_indices = torch.Tensor(right_indices, device=device, dtype=torch.int32)
 
             ranks_of_first_completion = self.judge.judge(
                 prompts, completions_to_compare
@@ -111,13 +111,14 @@ class OnlineDPOTrainerWithSamples(OnlineDPOTrainer):
             # convert ranks to a True/False mask:
             # when rank == 0, it means the first completion is the best
             # when rank == 1, it means the second completion is the best
-            chosen_indices = left_indices.gather(
-                torch.tensor([response_idx for response_idx, rank in enumerate(ranks_of_first_completion) if rank == 1], device=device)
-            )
-            rejected_indices = right_indices.gather(
-                torch.tensor([response_idx for response_idx, rank in enumerate(ranks_of_first_completion) if rank == -1], device=device)
-            )
-        
+            # when rank == -1, it means both completions are equally good
+
+            chosen_indices = [(left_indices[i] if rank == 0 else right_indices[i]) for i, rank in enumerate(ranks_of_first_completion) if rank != -1]
+            chosen_indices = torch.tensor(chosen_indices, device=device, dtype=torch.long)
+
+            rejected_indices = [(right_indices[i] if rank == 0 else left_indices[i]) for i, rank in enumerate(ranks_of_first_completion) if rank != -1]
+            rejected_indices = torch.tensor(rejected_indices, device=device, dtype=torch.long)
+
             assert chosen_indices.shape == rejected_indices.shape
         else:
             raise NotImplementedError("Reward model not implemented")
