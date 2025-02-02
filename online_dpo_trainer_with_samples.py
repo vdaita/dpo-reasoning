@@ -1,6 +1,6 @@
 from trl.trl.trainer.online_dpo_trainer import OnlineDPOTrainer, maybe_apply_chat_template, \
     truncate_right, unwrap_model_for_generation, empty_cache, \
-    is_conversational, SIMPLE_CHAT_TEMPLATE, OptimizerNames, amp
+    is_conversational, SIMPLE_CHAT_TEMPLATE, OptimizerNames
 from trl.trl.trainer.online_dpo_config import OnlineDPOConfig
 from typing import Optional, Union, Any
 import torch
@@ -9,9 +9,14 @@ import torch.nn.functional as F
 import jinja2
 
 class OnlineDPOTrainerWithSamples(OnlineDPOTrainer):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, num_samples: int = 2, **kwargs):
         super().__init__(*args, **kwargs)
-        self.num_samples = kwargs["num_samples"] if "num_samples" in kwargs else 2
+        self.num_samples = num_samples
+        self.args = kwargs["args"]
+        
+        if self.args.use_vllm:
+            self.generation_config.n = self.num_samples
+
 
     def _generate(self, model, prompts):
         eos_token_id = self.processing_class.eos_token_id
@@ -195,8 +200,7 @@ class OnlineDPOTrainerWithSamples(OnlineDPOTrainer):
             loss = loss.mean()  # mean() to average on multi-gpu parallel training
 
         if self.use_apex:
-            with amp.scale_loss(loss, self.optimizer) as scaled_loss:
-                scaled_loss.backward()
+            raise NotImplementedError("Apex not implemented")
         else:
             self.accelerator.backward(loss, **kwargs)
 
