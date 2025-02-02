@@ -9,14 +9,10 @@ import torch.nn.functional as F
 import jinja2
 
 class OnlineDPOTrainerWithSamples(OnlineDPOTrainer):
-    def __init__(self, *func_args, args: Optional[OnlineDPOConfig], num_samples=32, **kwargs):
-        kwargs.update({"args", args})
-        super().__init__(*func_args, **kwargs)
-        self.num_samples = num_samples
-        
-        if args.use_vllm:
-            raise NotImplementedError("VLLM not supported in OnlineDPOTrainerWithSamples")
-    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.num_samples = kwargs["num_samples"] if "num_samples" in kwargs else 2
+
     def _generate(self, model, prompts):
         eos_token_id = self.processing_class.eos_token_id
         pad_token_id = self.processing_class.pad_token_id
