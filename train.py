@@ -1,4 +1,3 @@
-from torchtune.rlhf.loss import DPOLoss
 from datasets import load_dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from torch.optim import Adam
